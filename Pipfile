@@ -4,7 +4,7 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [[source]]
-url = "https://${SIT_PYPI_USER}:${SIT_PYPI_PASS}@sit-pypi.herokuapp.com/simple"
+url = "https://${SIT_PYPI_USER}:${SIT_PYPI_PASS}@arruda.pythonanywhere.com/simple"
 verify_ssl = true
 name = "sit-git"
 
@@ -17,6 +17,8 @@ flake8 = "*"
 walrus = "==0.7.1"
 python-decouple = "==3.1"
 event-service-utils = "*"
+pillow = "==5.4.1"
+opencv-python-headless = "==4.0.0.21"
 videostreamforwarder = {path = ".",editable = true}
 
 [requires]
