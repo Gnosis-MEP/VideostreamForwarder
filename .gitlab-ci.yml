@@ -12,6 +12,10 @@ variables:
   DOCKER_HOST: tcp://docker:2375/
   DOCKER_DRIVER: overlay2
   DOCKER_TLS_CERTDIR: ""
+  LISTEN_EVENT_TYPE_QUERY_CREATED: QueryCreated
+  LISTEN_EVENT_TYPE_QUERY_REMOVED: QueryRemoved
+  SUPPORTED_VIDEO_OUTPUT_TYPES: VideoStream,AnnotatedVideoStream
+  OUPUT_MEDIA_SERVER_URL: rtmp://localhost/hls/
 
 Build Image:
   image: jonoh/docker-buildx-qemu
