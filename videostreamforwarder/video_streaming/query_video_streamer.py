@@ -22,7 +22,7 @@ from videostreamforwarder.conf import (
 )
 
 class QueryVideoStreammer():
-    def __init__(self, query_id, file_storage_cli, stream_factory, tracer, logging_level, out_type='sysout'):
+    def __init__(self, query_id, file_storage_cli, add_annotations ,stream_factory, tracer, logging_level, out_type='sysout'):
         self.name = 'VideoStreamForwarder:Streamer'
         self.logging_level = logging_level
         self.query_id = query_id
@@ -32,6 +32,7 @@ class QueryVideoStreammer():
         self.out_type = out_type
         self.logger = self._setup_logging()
         self.query_stream = self.create_query_stream(query_id)
+        self.add_annotations = add_annotations
 
     def _setup_logging(self):
         log_format = (
@@ -87,6 +88,9 @@ class QueryVideoStreammer():
     def process_data_event(self, event_data):
         for vekg_event in event_data['vekg_stream']:
             image_ndarray = self.get_event_data_image_ndarray(vekg_event)
+            if self.add_annotations:
+                image_ndarray = self.add_bbboxes_to_image(image_ndarray, vekg_event['vekg'])
+
             if self.out_type == 'sysout':
                 framestring = image_ndarray.tostring()
                 sys.stdout.buffer.write(framestring)
@@ -104,6 +108,27 @@ class QueryVideoStreammer():
         nd_shape = (int(height), int(width), n_channels)
         image_nd_array = self.fs_client.get_image_ndarray_by_key_and_shape(img_key, nd_shape)
         return image_nd_array
+
+    def add_bbboxes_to_image(self, image, vekg):
+        output_image = image
+        for node in vekg.get('nodes', []):
+            if len(node) == 2 and isinstance(node[1], dict):
+                detection = node[1]
+                label = detection['label']
+                confidence = detection['confidence']
+                bbox = detection['bounding_box']
+                color = (254.0, 254.0, 254)
+                output_image = cv2.rectangle(
+                    output_image,
+                    (bbox[0], bbox[1]), (bbox[2], bbox[3]),
+                    color
+                )
+                label_conf = f'{label}: {confidence}'
+                cv2.putText(output_image, label_conf, (bbox[0] - 10, bbox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+        return output_image
+
+
 
     def run(self):
         while True:
@@ -132,6 +157,7 @@ class QueryVideoStreammer():
 
 if __name__ == '__main__':
     query_id = sys.argv[1]
+    add_annotations = 'annotated' in sys.argv[2].lower()
 
     stream_factory = RedisStreamFactory(host=REDIS_ADDRESS, port=REDIS_PORT)
     tracer_configs = {
@@ -154,9 +180,10 @@ if __name__ == '__main__':
     video_streamer = QueryVideoStreammer(
         query_id=query_id,
         file_storage_cli=file_storage_cli,
+        add_annotations=add_annotations,
         stream_factory=stream_factory,
         tracer=tracer,
         logging_level=LOGGING_LEVEL,
-        out_type='sysout'
+        out_type='sysout' #ocv/sysout
     )
     video_streamer.run()

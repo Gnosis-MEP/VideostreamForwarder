@@ -21,7 +21,6 @@ class VSProcessManager():
         self.width = width
         self.height = height
         self.video_output_type = video_output_type
-        # self.is_annotated =
         # self.vs_cmd = self.prepare_vs_script_cmd()
         # self.ffmpeg_cmd = self.prepare_ffmpeg_cmd()
 
@@ -56,6 +55,7 @@ class VSProcessManager():
             f'{self.vs_script}',
             f'{self.ffmpeg}',
             f'{self.query_id}',
+            f'{self.video_output_type}',
             f'{self.width}x{self.height}',
             f'{self.fps}',
             f'{self.media_server_url}',
