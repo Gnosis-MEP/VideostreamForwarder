@@ -22,7 +22,7 @@ from videostreamforwarder.conf import (
 )
 
 class QueryVideoStreammer():
-    def __init__(self, query_id, file_storage_cli, add_annotations ,stream_factory, tracer, logging_level, out_type='sysout'):
+    def __init__(self, query_id, file_storage_cli, output_type ,stream_factory, tracer, logging_level, out_type='sysout'):
         self.name = 'VideoStreamForwarder:Streamer'
         self.logging_level = logging_level
         self.query_id = query_id
@@ -32,7 +32,12 @@ class QueryVideoStreammer():
         self.out_type = out_type
         self.logger = self._setup_logging()
         self.query_stream = self.create_query_stream(query_id)
-        self.add_annotations = add_annotations
+        self.output_type = output_type
+        self.add_annotations = 'annotated' in self.output_type.lower()
+        self.annotate_return_only = 'ret' in self.output_type.lower()
+        self.default_annotation_color = (0, 201, 87)
+        self.default_annotation_bb_thickness = 5
+        self.default_annotation_font_size = 1
 
     def _setup_logging(self):
         log_format = (
@@ -86,10 +91,17 @@ class QueryVideoStreammer():
             method(*method_args, **method_kwargs)
 
     def process_data_event(self, event_data):
+        match_return = event_data.get('match_return', {})
+        matched_node_ids = match_return.get('node_ids', [])
+        primitive_returns = match_return.get('primitives', {})
         for vekg_event in event_data['vekg_stream']:
             image_ndarray = self.get_event_data_image_ndarray(vekg_event)
             if self.add_annotations:
-                image_ndarray = self.add_bbboxes_to_image(image_ndarray, vekg_event['vekg'])
+                if self.annotate_return_only:
+                    image_ndarray = self.add_bbboxes_to_image(image_ndarray, vekg_event['vekg'].get('nodes', []), matched_node_ids)
+                else:
+                    image_ndarray = self.add_bbboxes_to_image(image_ndarray, vekg_event['vekg'].get('nodes', []))
+                image_ndarray = self.add_primitive_returns_to_image(image_ndarray, primitive_returns)
 
             if self.out_type == 'sysout':
                 framestring = image_ndarray.tostring()
@@ -109,25 +121,50 @@ class QueryVideoStreammer():
         image_nd_array = self.fs_client.get_image_ndarray_by_key_and_shape(img_key, nd_shape)
         return image_nd_array
 
-    def add_bbboxes_to_image(self, image, vekg):
+    def add_text_to_image(self, image, text, coord):
         output_image = image
-        for node in vekg.get('nodes', []):
+        cv2.putText(
+            output_image, text, coord, cv2.FONT_HERSHEY_SIMPLEX,
+            self.default_annotation_font_size, self.default_annotation_color, self.default_annotation_bb_thickness
+        )
+        return output_image
+
+    def add_bbboxes_to_image(self, image, vekg_nodes, matched_node_ids=None):
+        output_image = image
+        for node in vekg_nodes:
             if len(node) == 2 and isinstance(node[1], dict):
+                node_id = node[0]
+                if matched_node_ids is not None:
+                    if node_id not in matched_node_ids:
+                        continue
+
                 detection = node[1]
                 label = detection['label']
                 confidence = detection['confidence']
                 bbox = detection['bounding_box']
-                color = (254.0, 254.0, 254)
                 output_image = cv2.rectangle(
                     output_image,
                     (bbox[0], bbox[1]), (bbox[2], bbox[3]),
-                    color
+                    self.default_annotation_color,
+                    self.default_annotation_bb_thickness
                 )
-                label_conf = f'{label}: {confidence}'
-                cv2.putText(output_image, label_conf, (bbox[0] - 10, bbox[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                # label_conf = f'{label}: {node_id}'
+                label_conf = f'{label}: {confidence:.2f}'
+                output_image = self.add_text_to_image(output_image, label_conf, (bbox[0] - 10, bbox[1] - 10))
+                # cv2.putText(output_image, label_conf, (bbox[0] - 10, bbox[1] - 30), cv2.FONT_HERSHEY_SIMPLEX, 1, self.default_annotation_color, 2)
 
         return output_image
 
+    def add_primitive_returns_to_image(self, image, primitive_returns):
+        output_image = image
+
+        for ret_index, (colname, rows) in enumerate(primitive_returns.items()):
+            text = f'{colname}: '
+            text += ', '.join([ f'{val:.2f}' for val in rows ])
+            coord = (20, 50 * (ret_index + 1))
+            output_image = self.add_text_to_image(output_image, text, coord)
+
+        return output_image
 
 
     def run(self):
@@ -157,7 +194,7 @@ class QueryVideoStreammer():
 
 if __name__ == '__main__':
     query_id = sys.argv[1]
-    add_annotations = 'annotated' in sys.argv[2].lower()
+    output_type = sys.argv[2]
 
     stream_factory = RedisStreamFactory(host=REDIS_ADDRESS, port=REDIS_PORT)
     tracer_configs = {
@@ -180,7 +217,7 @@ if __name__ == '__main__':
     video_streamer = QueryVideoStreammer(
         query_id=query_id,
         file_storage_cli=file_storage_cli,
-        add_annotations=add_annotations,
+        output_type=output_type,
         stream_factory=stream_factory,
         tracer=tracer,
         logging_level=LOGGING_LEVEL,
